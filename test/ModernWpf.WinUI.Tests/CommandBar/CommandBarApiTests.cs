@@ -228,7 +228,9 @@ public class CommandBarApiTests
     }
 
     [TestMethod]
-    public void CommandBarDynamicOverflowUsesSourceOrderGroupsAndReactsToOrderChanges()
+    [DataRow(0d)]
+    [DataRow(7d)]
+    public void CommandBarDynamicOverflowUsesSourceOrderGroupsAndReactsToOrderChanges(double hostPadding)
     {
         WpfTestHost.Run(() =>
         {
@@ -238,16 +240,20 @@ public class CommandBarApiTests
             var second = new AppBarButton { Label = "Second" };
             var third = new AppBarButton { Label = "Third", DynamicOverflowOrder = 1 };
             var fourth = new AppBarButton { Label = "Fourth", DynamicOverflowOrder = 2 };
-            var commandBar = new ModernWpf.Controls.CommandBar();
+            var commandBar = new ModernWpf.Controls.CommandBar { Width = 188 };
             commandBar.PrimaryCommands.Add(first);
             commandBar.PrimaryCommands.Add(second);
             commandBar.PrimaryCommands.Add(third);
             commandBar.PrimaryCommands.Add(fourth);
 
-            using var host = new TestWindowHost(commandBar, width: 190, height: 100);
+            // Control the bar's layout width, not the HWND width: High Contrast
+            // chrome consumes extra space and Windows coerces small HWND sizes.
+            var container = new Border { Padding = new Thickness(hostPadding), Child = commandBar };
+            using var host = new TestWindowHost(container, width: 400, height: 200);
             host.UpdateLayout();
             WpfTestHost.DoEvents();
 
+            Assert.AreEqual(188d, commandBar.ActualWidth, 0.01);
             Assert.IsFalse(first.IsInOverflow);
             Assert.IsFalse(second.IsInOverflow);
             Assert.IsTrue(third.IsInOverflow);
@@ -268,7 +274,9 @@ public class CommandBarApiTests
     }
 
     [TestMethod]
-    public void CommandBarDynamicOverflowMovesWholeOrderGroupsAndAdjacentSeparators()
+    [DataRow(0d)]
+    [DataRow(7d)]
+    public void CommandBarDynamicOverflowMovesWholeOrderGroupsAndAdjacentSeparators(double hostPadding)
     {
         WpfTestHost.Run(() =>
         {
@@ -278,22 +286,24 @@ public class CommandBarApiTests
             var first = new AppBarButton { Label = "First", DynamicOverflowOrder = 1 };
             var trailingSeparator = new AppBarSeparator();
             var second = new AppBarButton { Label = "Second", DynamicOverflowOrder = 2 };
-            var commandBar = new ModernWpf.Controls.CommandBar();
+            var commandBar = new ModernWpf.Controls.CommandBar { Width = 134 };
             commandBar.PrimaryCommands.Add(leadingSeparator);
             commandBar.PrimaryCommands.Add(first);
             commandBar.PrimaryCommands.Add(trailingSeparator);
             commandBar.PrimaryCommands.Add(second);
 
-            using var host = new TestWindowHost(commandBar, width: 120, height: 100);
+            var container = new Border { Padding = new Thickness(hostPadding), Child = commandBar };
+            using var host = new TestWindowHost(container, width: 400, height: 200);
             host.UpdateLayout();
             WpfTestHost.DoEvents();
 
+            Assert.AreEqual(134d, commandBar.ActualWidth, 0.01);
             Assert.IsTrue(leadingSeparator.IsInOverflow);
             Assert.IsTrue(first.IsInOverflow);
             Assert.IsTrue(trailingSeparator.IsInOverflow);
             Assert.IsFalse(second.IsInOverflow);
 
-            var groupCommandBar = new ModernWpf.Controls.CommandBar();
+            var groupCommandBar = new ModernWpf.Controls.CommandBar { Width = 188 };
             var grouped = Enumerable.Range(0, 4)
                 .Select(index => new AppBarButton
                 {
@@ -306,12 +316,11 @@ public class CommandBarApiTests
                 groupCommandBar.PrimaryCommands.Add(button);
             }
 
-            host.Window.Content = groupCommandBar;
-            host.Window.Width = 190;
-            host.Window.Height = 100;
+            container.Child = groupCommandBar;
             host.UpdateLayout();
             WpfTestHost.DoEvents();
 
+            Assert.AreEqual(188d, groupCommandBar.ActualWidth, 0.01);
             Assert.IsTrue(grouped.All(button => button.IsInOverflow));
         });
     }
@@ -570,6 +579,43 @@ public class CommandBarApiTests
             Assert.AreSame(replacementHighContrastBorder, highContrastBorder.Stroke);
             Assert.AreSame(replacementOpenBorder, openBorder.BorderBrush);
             Assert.AreEqual(replacementOpenThickness, openBorder.BorderThickness);
+        });
+    }
+
+    [TestMethod]
+    public void CommandBarMoreButtonIconTracksPresenterForeground()
+    {
+        WpfTestHost.Run(() =>
+        {
+            TestApplication.EnsureInitialized();
+            var commandBar = new ModernWpf.Controls.CommandBar
+            {
+                OverflowButtonVisibility = CommandBarOverflowButtonVisibility.Visible
+            };
+            using var host = new TestWindowHost(commandBar, width: 360, height: 160);
+            var moreButton = FindTemplateChild<ToggleButton>(commandBar, "MoreButton");
+            var presenter = FindTemplateChild<ContentPresenterEx>(moreButton, "ContentPresenter");
+            var icon = FindTemplateChild<FontIconFallback>(commandBar, "EllipsisIcon");
+
+            // Pointer-over and pressed triggers change the visual presenter, not
+            // the ToggleButton that is the icon's logical parent.
+            foreach (var foreground in new[] { Brushes.Lime, Brushes.Magenta })
+            {
+                presenter.SetCurrentValue(ContentPresenterEx.ForegroundProperty, foreground);
+                host.UpdateLayout();
+                Assert.AreSame(foreground, icon.Foreground);
+            }
+
+            presenter.ClearValue(ContentPresenterEx.ForegroundProperty);
+            host.UpdateLayout();
+            Assert.AreSame(presenter.Foreground, icon.Foreground);
+
+            commandBar.IsEnabled = false;
+            host.UpdateLayout();
+            Assert.AreSame(presenter.Foreground, icon.Foreground);
+            commandBar.IsEnabled = true;
+            host.UpdateLayout();
+            Assert.AreSame(presenter.Foreground, icon.Foreground);
         });
     }
 

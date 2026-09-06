@@ -79,6 +79,13 @@ bounds.
 
 ## WPF pixel substitutions
 
+- WPF gives the More-button icon a logical parent of `ToggleButton`, so it
+  does not inherit state-specific foregrounds from the visual
+  `ContentPresenterEx`. The icon explicitly binds to that presenter's foreground
+  to preserve the source pointer-over and pressed contrast. This fixes the
+  pale ellipsis on the Aquatic system-highlight background without changing
+  theme resources or public contracts. A regression covers live foreground
+  changes, clearing the override, and disabling/re-enabling the command bar.
 - WPF Segoe UI label measurement is one pixel narrower per Right-label button
   at Gallery scale. `AppBarButtonTextLabelOnRightMargin` and the toggle
   equivalent retain every source value except a documented 12-to-13 trailing
@@ -118,6 +125,20 @@ the control template:
 ```
 
 ## Validation
+
+The RC overflow-order tests constrain the CommandBar itself to 188 or 134 DIPs
+inside a larger host and assert its actual width. They retain the ordering,
+whole-group, and adjacent-separator assertions with both zero and seven-DIP
+host padding. Sizing only the outer HWND is not a stable layout constraint:
+Windows coerces the requested 120-DIP test window to 136 DIPs on the audit
+host, while the High Contrast window template adds another 14 DIPs of
+horizontal content margin. A margin-only control experiment reduced the bars
+from 188/134 to 174/120 DIPs and reproduced both original assertion failures
+without enabling High Contrast or changing product code.
+After the test correction, the four parameterized cases and all 91 related
+CommandBar/CommandBarFlyout cases passed under the actual Windows Aquatic
+theme with no skips. The normal-theme complete WinUI suite passed 1,186 cases
+with no skips. The correction changes no product behavior or public contract.
 
 The final failure-on-difference installed-Gallery proofs are:
 
